@@ -115,9 +115,14 @@ func (a *Aqueduct) GetDesiredState() (*AqueductState, error) {
 			}
 		}
 
-		desiredState.Sources[domain] = &Source{
-			Domain: domain,
-			Nodes:  nodes,
+		if _, found := desiredState.Sources[domain]; found {
+			log.Printf("warning: duplicate domain %q", domain)
+			desiredState.Sources[domain].Nodes = append(desiredState.Sources[domain].Nodes, nodes...)
+		} else {
+			desiredState.Sources[domain] = &Source{
+				Domain: domain,
+				Nodes:  nodes,
+			}
 		}
 	}
 
