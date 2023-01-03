@@ -1,0 +1,10 @@
+{
+    "providers": {
+        "1l.hn": {
+            "provider": "cloudflare",
+            "options": {
+                "api_token_env_var": "CF_TOKEN"
+            }
+        }
+    }
+}
