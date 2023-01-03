@@ -91,7 +91,7 @@ func main() {
 	ctx := context.Background()
 	aq := NewAqueduct(ctx, clientset, providers, cfg.OwnerName)
 
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if time.Since(aq.LastAchievedDesiredState()) > 10*time.Minute {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -107,7 +107,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/livenessz", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/livez", func(w http.ResponseWriter, r *http.Request) {
 		if time.Since(aq.LastAchievedDesiredState()) > 10*time.Minute {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusServiceUnavailable)
