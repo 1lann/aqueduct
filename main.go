@@ -92,7 +92,11 @@ func main() {
 	aq := NewAqueduct(ctx, clientset, providers, cfg.OwnerName)
 
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		if aq.IsInWarningState() {
+		if time.Since(aq.LastAchievedDesiredState()) > 10*time.Minute {
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, "unable to achieve desired state, last achieved: %s\n", aq.LastAchievedDesiredState().Format(time.RFC3339))
+		} else if aq.IsInWarningState() {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			w.Write([]byte("in warning state\n"))
