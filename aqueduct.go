@@ -142,7 +142,7 @@ func (a *Aqueduct) Reconciler() {
 			select {
 			case <-a.ctx.Done():
 				return
-			case <-time.After(5 * time.Minute):
+			case <-time.After(2 * time.Minute):
 				if a.LastAchievedDesiredState().Before(time.Now().Add(-5 * time.Minute)) {
 					// forcefully taint every 5 minutes
 					taint()
