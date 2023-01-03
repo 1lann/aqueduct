@@ -109,6 +109,7 @@ func (c *Cloudflare) CreateRecord(name, typ, value string) error {
 		Type:    typ,
 		Name:    name,
 		Content: value,
+		TTL:     60,
 	})
 	cancel()
 	if err != nil {
