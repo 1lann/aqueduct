@@ -19,6 +19,10 @@ type CloudflareConfig struct {
 	APITokenEnvVar string `json:"api_token_env_var"`
 }
 
+type DigitalOceanConfig struct {
+	APITokenEnvVar string `json:"api_token_env_var"`
+}
+
 type ProviderConfig struct {
 	Provider string          `json:"provider"`
 	Options  json.RawMessage `json:"options"`
@@ -82,6 +86,23 @@ func main() {
 			provider, err := NewCloudflare(token)
 			if err != nil {
 				panic(errors.Wrap(err, "creating cloudflare provider"))
+			}
+
+			providers[name] = provider
+		case "digitalocean":
+			var digitaloceanCfg DigitalOceanConfig
+			if err := json.Unmarshal(providerCfg.Options, &digitaloceanCfg); err != nil {
+				panic(errors.Wrap(err, "parsing digitalocean config options"))
+			}
+
+			token := os.Getenv(digitaloceanCfg.APITokenEnvVar)
+			if token == "" {
+				panic(errors.Errorf("missing digitalocean API token in %q", digitaloceanCfg.APITokenEnvVar))
+			}
+
+			provider, err := NewDigitalOcean(token)
+			if err != nil {
+				panic(errors.Wrap(err, "creating digitalocean provider"))
 			}
 
 			providers[name] = provider

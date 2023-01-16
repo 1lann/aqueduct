@@ -5,6 +5,12 @@
             "options": {
                 "api_token_env_var": "CF_TOKEN"
             }
+        },
+        "chuie.io": {
+            "provider": "digitalocean",
+            "options": {
+                "api_token_env_var": "DO_TOKEN"
+            }
         }
     }
 }
