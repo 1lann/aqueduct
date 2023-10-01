@@ -28,8 +28,8 @@ type DNSRecord interface {
 type DNSProvider interface {
 	ProviderName() string
 	GetRecords(rootDomain string) ([]DNSRecord, error)
-	CreateRecord(name, typ, value string) error
-	ReplaceRecord(original DNSRecord, newValue string) error
+	CreateRecord(name, typ, value string, annotations map[string]string) error
+	ReplaceRecord(original DNSRecord, newValue string, annotations map[string]string) error
 	DeleteRecord(record DNSRecord) error
 }
 

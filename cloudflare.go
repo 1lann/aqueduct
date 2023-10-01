@@ -96,7 +96,7 @@ func (c *Cloudflare) GetRecords(rootDomain string) ([]DNSRecord, error) {
 	return returnRecords, nil
 }
 
-func (c *Cloudflare) CreateRecord(name, typ, value string) error {
+func (c *Cloudflare) CreateRecord(name, typ, value string, annotations map[string]string) error {
 	_, root := splitDomain(name)
 
 	zoneID, err := c.ZoneIDByName(root)
@@ -104,12 +104,18 @@ func (c *Cloudflare) CreateRecord(name, typ, value string) error {
 		return errors.Wrap(err, "failed to get zone ID")
 	}
 
+	var useProxy bool
+	if annotations[aqueductAnnotation+"/cloudflare-proxy"] == "true" {
+		useProxy = true
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	_, err = c.client.CreateDNSRecord(ctx, zoneID, cloudflare.DNSRecord{
-		Type:    typ,
-		Name:    name,
-		Content: value,
-		TTL:     60,
+		Type:      typ,
+		Name:      name,
+		Content:   value,
+		TTL:       60,
+		Proxiable: useProxy,
 	})
 	cancel()
 	if err != nil {
@@ -135,15 +141,21 @@ func (c *Cloudflare) DeleteRecord(record DNSRecord) error {
 	return nil
 }
 
-func (c *Cloudflare) ReplaceRecord(original DNSRecord, newValue string) error {
+func (c *Cloudflare) ReplaceRecord(original DNSRecord, newValue string, annotations map[string]string) error {
 	cloudflareRecord, ok := original.(*CloudflareRecord)
 	if !ok {
 		return fmt.Errorf("record must be a *CloudflareRecord")
 	}
 
+	var useProxy bool
+	if annotations[aqueductAnnotation+"/cloudflare-proxy"] == "true" {
+		useProxy = true
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	err := c.client.UpdateDNSRecord(ctx, cloudflareRecord.ZoneID, cloudflareRecord.ID, cloudflare.DNSRecord{
-		Content: newValue,
+		Content:   newValue,
+		Proxiable: useProxy,
 	})
 	cancel()
 	if err != nil {

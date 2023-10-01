@@ -63,7 +63,7 @@ func (c *DigitalOcean) GetRecords(rootDomain string) ([]DNSRecord, error) {
 	return returnRecords, nil
 }
 
-func (c *DigitalOcean) CreateRecord(name, typ, value string) error {
+func (c *DigitalOcean) CreateRecord(name, typ, value string, annotations map[string]string) error {
 	subDomain, root := splitDomain(name)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -97,7 +97,7 @@ func (c *DigitalOcean) DeleteRecord(record DNSRecord) error {
 	return nil
 }
 
-func (c *DigitalOcean) ReplaceRecord(original DNSRecord, newValue string) error {
+func (c *DigitalOcean) ReplaceRecord(original DNSRecord, newValue string, annotations map[string]string) error {
 	doRecord, ok := original.(*DigitalOceanRecord)
 	if !ok {
 		return fmt.Errorf("record must be a *DigitalOceanRecord")

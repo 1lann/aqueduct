@@ -33,6 +33,7 @@ type Node struct {
 type Source struct {
 	Domain      string
 	Nodes       []Node
+	Annotations map[string]string
 	aqDNSRecord DNSRecord
 }
 
@@ -118,15 +119,29 @@ func (a *Aqueduct) GetDesiredState() (*AqueductState, error) {
 		if _, found := desiredState.Sources[domain]; found {
 			log.Printf("warning: duplicate domain %q", domain)
 			desiredState.Sources[domain].Nodes = append(desiredState.Sources[domain].Nodes, nodes...)
+			desiredState.Sources[domain].Annotations = mergeMap(desiredState.Sources[domain].Annotations, svc.Annotations)
 		} else {
 			desiredState.Sources[domain] = &Source{
-				Domain: domain,
-				Nodes:  nodes,
+				Domain:      domain,
+				Nodes:       nodes,
+				Annotations: svc.Annotations,
 			}
 		}
 	}
 
 	return desiredState, nil
+}
+
+func mergeMap(base, overlay map[string]string) map[string]string {
+	baseCopy := make(map[string]string)
+	for k, v := range base {
+		baseCopy[k] = v
+	}
+	for k, v := range overlay {
+		baseCopy[k] = v
+	}
+
+	return baseCopy
 }
 
 // DiscoverCurrentState discovers the current configured ingress state and updates currentState.

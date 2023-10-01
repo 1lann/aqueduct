@@ -13,6 +13,7 @@ type PlannedSource struct {
 	Domain        string
 	NodesToRemove []Node
 	NodesToAdd    []Node
+	Annotations   map[string]string
 }
 
 func (s *Source) Diff(b *Source) *PlannedSource {
@@ -21,7 +22,8 @@ func (s *Source) Diff(b *Source) *PlannedSource {
 	}
 
 	plan := &PlannedSource{
-		Domain: s.Domain,
+		Domain:      s.Domain,
+		Annotations: b.Annotations,
 	}
 
 	for _, aNode := range s.Nodes {
@@ -166,7 +168,7 @@ func (a *Aqueduct) ExecutePlan(plan *Plan) error {
 			continue
 		}
 
-		err := provider.CreateRecord("_aq."+source.Domain, "TXT", a.ownerName)
+		err := provider.CreateRecord("_aq."+source.Domain, "TXT", a.ownerName, source.Annotations)
 		if err != nil {
 			return errors.Wrapf(err, "create AQ (TXT) record %q from provider %q",
 				source.Domain, provider.ProviderName())
@@ -183,7 +185,7 @@ func (a *Aqueduct) ExecutePlan(plan *Plan) error {
 
 		for len(plannedSource.NodesToAdd) > 0 && len(plannedSource.NodesToRemove) > 0 {
 			err := provider.ReplaceRecord(plannedSource.NodesToRemove[0].dnsRecord,
-				plannedSource.NodesToAdd[0].IP)
+				plannedSource.NodesToAdd[0].IP, plannedSource.Annotations)
 			if err != nil {
 				return errors.Wrapf(err, "replace A record %q from provider %q",
 					domain, provider.ProviderName())
@@ -193,7 +195,7 @@ func (a *Aqueduct) ExecutePlan(plan *Plan) error {
 		}
 
 		for _, node := range plannedSource.NodesToAdd {
-			err := provider.CreateRecord(plannedSource.Domain, "A", node.IP)
+			err := provider.CreateRecord(plannedSource.Domain, "A", node.IP, plannedSource.Annotations)
 			if err != nil {
 				return errors.Wrapf(err, "create A record %q from provider %q",
 					domain, provider.ProviderName())
