@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -106,6 +107,7 @@ func (c *Cloudflare) CreateRecord(name, typ, value string, annotations map[strin
 
 	var useProxy bool
 	if annotations[aqueductAnnotation+"/cloudflare-proxy"] == "true" {
+		log.Println("creating record with proxiable set to true for", name)
 		useProxy = true
 	}
 
