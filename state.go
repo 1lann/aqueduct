@@ -121,7 +121,6 @@ func (a *Aqueduct) GetDesiredState() (*AqueductState, error) {
 			desiredState.Sources[domain].Nodes = append(desiredState.Sources[domain].Nodes, nodes...)
 			desiredState.Sources[domain].Annotations = mergeMap(desiredState.Sources[domain].Annotations, svc.Annotations)
 		} else {
-			log.Printf("discovered source %q with nodes %v", domain, svc.Annotations)
 			desiredState.Sources[domain] = &Source{
 				Domain:      domain,
 				Nodes:       nodes,

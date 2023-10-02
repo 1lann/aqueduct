@@ -118,6 +118,7 @@ func (c *Cloudflare) CreateRecord(name, typ, value string, annotations map[strin
 		Content:   value,
 		TTL:       60,
 		Proxiable: useProxy,
+		Proxied:   &useProxy,
 	})
 	cancel()
 	if err != nil {
@@ -158,6 +159,7 @@ func (c *Cloudflare) ReplaceRecord(original DNSRecord, newValue string, annotati
 	err := c.client.UpdateDNSRecord(ctx, cloudflareRecord.ZoneID, cloudflareRecord.ID, cloudflare.DNSRecord{
 		Content:   newValue,
 		Proxiable: useProxy,
+		Proxied:   &useProxy,
 	})
 	cancel()
 	if err != nil {
