@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	listersv1 "k8s.io/client-go/listers/core/v1"
+	discoverylistersv1 "k8s.io/client-go/listers/discovery/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -38,18 +39,18 @@ const unknownNode = "__aqueduct_internal_unknown_node"
 type Aqueduct struct {
 	ctx context.Context
 
-	currentState    *AqueductState
-	taintEvents     chan struct{}
-	informerFactory informers.SharedInformerFactory
-	nodesLister     listersv1.NodeLister
-	nodesInformer   cache.SharedIndexInformer
-	podsLister      listersv1.PodLister
-	podsInformer    cache.SharedIndexInformer
-	serviceLister   listersv1.ServiceLister
-	serviceInformer cache.SharedIndexInformer
-	clientset       *kubernetes.Clientset
-	providers       map[string]DNSProvider
-	ownerName       string
+	currentState         *AqueductState
+	taintEvents          chan struct{}
+	informerFactory      informers.SharedInformerFactory
+	nodesLister          listersv1.NodeLister
+	nodesInformer        cache.SharedIndexInformer
+	endpointSlicesLister discoverylistersv1.EndpointSliceLister
+	podsInformer         cache.SharedIndexInformer
+	serviceLister        listersv1.ServiceLister
+	serviceInformer      cache.SharedIndexInformer
+	clientset            *kubernetes.Clientset
+	providers            map[string]DNSProvider
+	ownerName            string
 
 	hasWarnings    bool
 	inWarningState atomic.Bool
@@ -260,17 +261,17 @@ func NewAqueduct(ctx context.Context, clientset *kubernetes.Clientset,
 	aq := &Aqueduct{
 		ctx: ctx,
 
-		taintEvents:     make(chan struct{}, 1),
-		informerFactory: informerFactory,
-		nodesLister:     informerFactory.Core().V1().Nodes().Lister(),
-		nodesInformer:   informerFactory.Core().V1().Nodes().Informer(),
-		podsLister:      informerFactory.Core().V1().Pods().Lister(),
-		podsInformer:    informerFactory.Core().V1().Pods().Informer(),
-		serviceLister:   informerFactory.Core().V1().Services().Lister(),
-		serviceInformer: informerFactory.Core().V1().Services().Informer(),
-		providers:       providers,
-		clientset:       clientset,
-		ownerName:       ownerName,
+		taintEvents:          make(chan struct{}, 1),
+		informerFactory:      informerFactory,
+		nodesLister:          informerFactory.Core().V1().Nodes().Lister(),
+		nodesInformer:        informerFactory.Core().V1().Nodes().Informer(),
+		endpointSlicesLister: informerFactory.Discovery().V1().EndpointSlices().Lister(),
+		podsInformer:         informerFactory.Core().V1().Pods().Informer(),
+		serviceLister:        informerFactory.Core().V1().Services().Lister(),
+		serviceInformer:      informerFactory.Core().V1().Services().Informer(),
+		providers:            providers,
+		clientset:            clientset,
+		ownerName:            ownerName,
 
 		ipsToNodes: make(map[string]string),
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
+	v1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
@@ -92,27 +93,45 @@ func (a *Aqueduct) GetDesiredState() (*AqueductState, error) {
 				})
 			}
 		} else {
-			pods, err := a.podsLister.List(labels.SelectorFromSet(svc.Spec.Selector))
+			endpointSlices, err := a.endpointSlicesLister.EndpointSlices(svc.Namespace).List(labels.SelectorFromSet(map[string]string{
+				"kubernetes.io/service-name": svc.Name,
+			}))
 			if err != nil {
-				log.Printf("service %q failed to list pods with selector %q, skipping: %+v",
-					svc.Name, svc.Spec.Selector, err)
+				log.Printf("service %q failed to list endpoint slices, skipping: %+v", svc.Name, err)
 				a.hasWarnings = true
 				continue
 			}
 
-			for _, pod := range pods {
-				if pod.Spec.NodeName != "" {
-					resolvedIP, err := a.ResolveHost(pod.Spec.NodeName)
-					if err != nil {
-						log.Printf("service %q failed to resolve node %q, something seems wrong!", svc.Name, pod.Spec.NodeName)
-						panic("failed to resolve existing node")
-					}
+			var foundEndpointSlice *v1.EndpointSlice
 
-					nodes = append(nodes, Node{
-						Name: pod.Spec.NodeName,
-						IP:   resolvedIP,
-					})
+			for _, endpointSlice := range endpointSlices {
+				if len(endpointSlice.OwnerReferences) > 0 && endpointSlice.OwnerReferences[0].UID == svc.UID {
+					foundEndpointSlice = endpointSlice
+					break
 				}
+			}
+
+			if foundEndpointSlice == nil {
+				log.Printf("service %q has a domain annotation but no endpoint slices, skipping", svc.Name)
+				a.hasWarnings = true
+				continue
+			}
+
+			for _, endpoint := range foundEndpointSlice.Endpoints {
+				if endpoint.Conditions.Serving == nil || *endpoint.Conditions.Serving == false {
+					continue
+				}
+
+				resolvedIP, err := a.ResolveHost(*endpoint.NodeName)
+				if err != nil {
+					log.Printf("service %q failed to resolve node %q, something seems wrong!", svc.Name, *endpoint.NodeName)
+					panic("failed to resolve existing node")
+				}
+
+				nodes = append(nodes, Node{
+					Name: *endpoint.NodeName,
+					IP:   resolvedIP,
+				})
 			}
 		}
 
