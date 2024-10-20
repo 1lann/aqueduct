@@ -106,7 +106,7 @@ func (c *Cloudflare) CreateRecord(name, typ, value string, annotations map[strin
 	}
 
 	var useProxy bool
-	if annotations[aqueductAnnotation+"/cloudflare-proxy"] == "true" {
+	if annotations[aqueductAnnotation+"/cloudflare-proxy"] == "true" && typ != "TXT" {
 		log.Println("creating record with proxiable set to true for", name)
 		useProxy = true
 	}
