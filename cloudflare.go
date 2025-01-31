@@ -87,7 +87,9 @@ func (r *CloudflareRecord) Name() string {
 func (r *CloudflareRecord) Value() string {
 	d, _ := json.Marshal(r.RecordResponse.Data)
 
-	return string(d)
+	v, _ := json.Marshal(r.RecordResponse)
+
+	return string(d) + "|" + string(v)
 
 	// switch v := r.RecordResponse.Data.(type) {
 	// case dns.ARecord:
