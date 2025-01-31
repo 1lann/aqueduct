@@ -200,6 +200,8 @@ func (a *Aqueduct) DiscoverCurrentState() error {
 			return errors.Wrapf(err, "get AQ records from provider %q", provider.ProviderName())
 		}
 
+		log.Printf("messy records: %+v", allRecords)
+
 		records := make(map[string][]DNSRecord)
 
 		var aqRecords []DNSRecord
