@@ -90,7 +90,7 @@ func (r *CloudflareRecord) Value() string {
 	case dns.TXTRecord:
 		return v.Content
 	default:
-		panic(fmt.Sprintf("unknown record type: %T", v))
+		""
 	}
 }
 
@@ -212,7 +212,6 @@ func (c *Cloudflare) ReplaceRecord(original DNSRecord, newValue string, annotati
 		}
 	default:
 		return errors.Errorf("unknown record type: %s", cloudflareRecord.RecordResponse.Type)
-
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
