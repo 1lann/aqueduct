@@ -200,12 +200,12 @@ func (a *Aqueduct) DiscoverCurrentState() error {
 			return errors.Wrapf(err, "get AQ records from provider %q", provider.ProviderName())
 		}
 
-		log.Printf("messy records: %+v", allRecords)
-
 		records := make(map[string][]DNSRecord)
 
 		var aqRecords []DNSRecord
 		for _, record := range allRecords {
+			log.Printf("record data domain=%s provider=%s type=%s name=%s value=%s",
+				domain, provider, record.Type(), record.Name(), record.Value())
 			if record.Type() == "TXT" && strings.HasPrefix(record.Name(), "_aq.") {
 				aqRecords = append(aqRecords, record)
 			}
