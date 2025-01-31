@@ -109,20 +109,35 @@ func (c *Cloudflare) GetRecords(rootDomain string) ([]DNSRecord, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	pages := c.client.DNS.Records.ListAutoPaging(ctx, dns.RecordListParams{
+	// pages := c.client.DNS.Records.ListAutoPaging(ctx, dns.RecordListParams{
+	// 	ZoneID: cloudflare.F(zoneID),
+	// })
+
+	// var returnRecords []DNSRecord
+	// for pages.Next() {
+	// 	returnRecords = append(returnRecords, &CloudflareRecord{
+	// 		RecordResponse: pages.Current(),
+	// 		ZoneID:         zoneID,
+	// 	})
+	// }
+
+	// if err := pages.Err(); err != nil {
+	// 	return nil, errors.Wrap(err, "failed to get records")
+	// }
+
+	records, err := c.client.DNS.Records.List(ctx, dns.RecordListParams{
 		ZoneID: cloudflare.F(zoneID),
 	})
-
-	var returnRecords []DNSRecord
-	for pages.Next() {
-		returnRecords = append(returnRecords, &CloudflareRecord{
-			RecordResponse: pages.Current(),
-			ZoneID:         zoneID,
-		})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get records")
 	}
 
-	if err := pages.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to get records")
+	var returnRecords []DNSRecord
+	for _, record := range records.Result {
+		returnRecords = append(returnRecords, &CloudflareRecord{
+			RecordResponse: record,
+			ZoneID:         zoneID,
+		})
 	}
 
 	return returnRecords, nil
