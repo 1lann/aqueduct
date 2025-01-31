@@ -1,8 +1,8 @@
 module github.com/1lann/aqueduct
 
-go 1.21
+go 1.23
 
-toolchain go1.22.2
+toolchain go1.23.5
 
 require (
 	github.com/cloudflare/cloudflare-go v0.57.1 // indirect

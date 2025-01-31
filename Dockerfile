@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.19 AS builder
+FROM golang:1.23 AS builder
 
 # caching layer
 RUN echo "2023-01-03T01:33:49Z" && cd / && git clone https://github.com/1lann/aqueduct && \
