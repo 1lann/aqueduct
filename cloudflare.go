@@ -146,6 +146,7 @@ func (c *Cloudflare) CreateRecord(name, typ, value string, annotations map[strin
 				Content: cloudflare.F(value),
 				Proxied: cloudflare.F(useProxy),
 				TTL:     cloudflare.F(dns.TTL(60)),
+				Type:    cloudflare.F(dns.ARecordTypeA),
 			},
 		})
 	case "TXT":
@@ -154,6 +155,7 @@ func (c *Cloudflare) CreateRecord(name, typ, value string, annotations map[strin
 			Record: dns.TXTRecordParam{
 				Name:    cloudflare.F(name),
 				Content: cloudflare.F(value),
+				Type:    cloudflare.F(dns.TXTRecordTypeTXT),
 			},
 		})
 	}
@@ -201,10 +203,12 @@ func (c *Cloudflare) ReplaceRecord(original DNSRecord, newValue string, annotati
 			Content: cloudflare.F(newValue),
 			Proxied: cloudflare.F(useProxy),
 			TTL:     cloudflare.F(dns.TTL(60)),
+			Type:    cloudflare.F(dns.ARecordTypeA),
 		}
 	case dns.RecordResponseTypeTXT:
 		newRecord = dns.TXTRecordParam{
 			Content: cloudflare.F(newValue),
+			Type:    cloudflare.F(dns.TXTRecordTypeTXT),
 		}
 	default:
 		return errors.Errorf("unknown record type: %s", cloudflareRecord.RecordResponse.Type)
