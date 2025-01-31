@@ -94,7 +94,7 @@ func (r *CloudflareRecord) Value() string {
 	}
 }
 
-func (c *Cloudflare) GetRecordsecords(rootDomain string) ([]DNSRecord, error) {
+func (c *Cloudflare) GetRecords(rootDomain string) ([]DNSRecord, error) {
 	zoneID, err := c.ZoneIDByName(rootDomain)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get zone ID")
