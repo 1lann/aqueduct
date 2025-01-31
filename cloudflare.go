@@ -7,7 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloudflare/cloudflare-go"
+	"github.com/cloudflare/cloudflare-go/v4"
+	"github.com/cloudflare/cloudflare-go/v4/dns"
+	"github.com/cloudflare/cloudflare-go/v4/option"
+	"github.com/cloudflare/cloudflare-go/v4/zones"
 	"github.com/cockroachdb/errors"
 )
 
@@ -18,17 +21,14 @@ type zoneIDCacheEntry struct {
 }
 
 type Cloudflare struct {
-	client *cloudflare.API
+	client *cloudflare.Client
 
 	zoneIDCache      map[string]*zoneIDCacheEntry
 	zoneIDCacheMutex sync.Mutex
 }
 
 func NewCloudflare(apiToken string) (*Cloudflare, error) {
-	client, err := cloudflare.NewWithAPIToken(apiToken)
-	if err != nil {
-		return nil, err
-	}
+	client := cloudflare.NewClient(option.WithAPIToken(apiToken))
 
 	return &Cloudflare{
 		client:      client,
@@ -50,30 +50,48 @@ func (c *Cloudflare) ZoneIDByName(name string) (string, error) {
 	c.zoneIDCacheMutex.Unlock()
 
 	entry.once.Do(func() {
-		entry.id, entry.err = c.client.ZoneIDByName(name)
+		resp, err := c.client.Zones.List(context.Background(), zones.ZoneListParams{
+			Name: cloudflare.F(name),
+		})
+		entry.err = err
+
+		if entry.err == nil && len(resp.Result) == 0 {
+			entry.err = fmt.Errorf("zone %s not found", name)
+		}
 
 		if entry.err != nil {
 			delete(c.zoneIDCache, name)
+			return
 		}
+
+		entry.id = resp.Result[0].ID
 	})
 
 	return entry.id, entry.err
 }
 
 type CloudflareRecord struct {
-	cloudflare.DNSRecord
+	dns.RecordResponse
+	ZoneID string
 }
 
 func (r *CloudflareRecord) Type() string {
-	return r.DNSRecord.Type
+	return string(r.RecordResponse.Type)
 }
 
 func (r *CloudflareRecord) Name() string {
-	return r.DNSRecord.Name
+	return r.RecordResponse.Name
 }
 
 func (r *CloudflareRecord) Value() string {
-	return r.DNSRecord.Content
+	switch v := r.RecordResponse.Data.(type) {
+	case dns.ARecord:
+		return v.Content
+	case dns.TXTRecord:
+		return v.Content
+	default:
+		panic(fmt.Sprintf("unknown record type: %T", v))
+	}
 }
 
 func (c *Cloudflare) GetRecords(rootDomain string) ([]DNSRecord, error) {
@@ -83,15 +101,21 @@ func (c *Cloudflare) GetRecords(rootDomain string) ([]DNSRecord, error) {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	records, err := c.client.DNSRecords(ctx, zoneID, cloudflare.DNSRecord{})
-	cancel()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get records")
-	}
+	defer cancel()
+	pages := c.client.DNS.Records.ListAutoPaging(ctx, dns.RecordListParams{
+		ZoneID: cloudflare.F(zoneID),
+	})
 
 	var returnRecords []DNSRecord
-	for _, record := range records {
-		returnRecords = append(returnRecords, &CloudflareRecord{record})
+	for pages.Next() {
+		returnRecords = append(returnRecords, &CloudflareRecord{
+			RecordResponse: pages.Current(),
+			ZoneID:         zoneID,
+		})
+	}
+
+	if err := pages.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to get records")
 	}
 
 	return returnRecords, nil
@@ -112,14 +136,27 @@ func (c *Cloudflare) CreateRecord(name, typ, value string, annotations map[strin
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	_, err = c.client.CreateDNSRecord(ctx, zoneID, cloudflare.DNSRecord{
-		Type:      typ,
-		Name:      name,
-		Content:   value,
-		TTL:       60,
-		Proxiable: useProxy,
-		Proxied:   &useProxy,
-	})
+
+	switch typ {
+	case "A":
+		_, err = c.client.DNS.Records.New(ctx, dns.RecordNewParams{
+			ZoneID: cloudflare.F(zoneID),
+			Record: dns.ARecordParam{
+				Name:    cloudflare.F(name),
+				Content: cloudflare.F(value),
+				Proxied: cloudflare.F(useProxy),
+				TTL:     cloudflare.F(dns.TTL(60)),
+			},
+		})
+	case "TXT":
+		_, err = c.client.DNS.Records.New(ctx, dns.RecordNewParams{
+			ZoneID: cloudflare.F(zoneID),
+			Record: dns.TXTRecordParam{
+				Name:    cloudflare.F(name),
+				Content: cloudflare.F(value),
+			},
+		})
+	}
 	cancel()
 	if err != nil {
 		return errors.Wrap(err, "failed to create record")
@@ -135,7 +172,9 @@ func (c *Cloudflare) DeleteRecord(record DNSRecord) error {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	err := c.client.DeleteDNSRecord(ctx, cloudflareRecord.ZoneID, cloudflareRecord.ID)
+	_, err := c.client.DNS.Records.Delete(ctx, cloudflareRecord.ID, dns.RecordDeleteParams{
+		ZoneID: cloudflare.F(cloudflareRecord.ZoneID),
+	})
 	cancel()
 	if err != nil {
 		return errors.Wrap(err, "failed to delete record")
@@ -155,11 +194,27 @@ func (c *Cloudflare) ReplaceRecord(original DNSRecord, newValue string, annotati
 		useProxy = true
 	}
 
+	var newRecord dns.RecordUnionParam
+	switch cloudflareRecord.RecordResponse.Type {
+	case dns.RecordResponseTypeA:
+		newRecord = dns.ARecordParam{
+			Content: cloudflare.F(newValue),
+			Proxied: cloudflare.F(useProxy),
+			TTL:     cloudflare.F(dns.TTL(60)),
+		}
+	case dns.RecordResponseTypeTXT:
+		newRecord = dns.TXTRecordParam{
+			Content: cloudflare.F(newValue),
+		}
+	default:
+		return errors.Errorf("unknown record type: %s", cloudflareRecord.RecordResponse.Type)
+
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	err := c.client.UpdateDNSRecord(ctx, cloudflareRecord.ZoneID, cloudflareRecord.ID, cloudflare.DNSRecord{
-		Content:   newValue,
-		Proxiable: useProxy,
-		Proxied:   &useProxy,
+	_, err := c.client.DNS.Records.Update(ctx, cloudflareRecord.ID, dns.RecordUpdateParams{
+		ZoneID: cloudflare.F(cloudflareRecord.ZoneID),
+		Record: newRecord,
 	})
 	cancel()
 	if err != nil {
