@@ -90,7 +90,7 @@ func (r *CloudflareRecord) Value() string {
 	case dns.TXTRecord:
 		return v.Content
 	default:
-		""
+		return ""
 	}
 }
 
