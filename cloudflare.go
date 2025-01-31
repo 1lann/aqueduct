@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -84,14 +85,18 @@ func (r *CloudflareRecord) Name() string {
 }
 
 func (r *CloudflareRecord) Value() string {
-	switch v := r.RecordResponse.Data.(type) {
-	case dns.ARecord:
-		return v.Content
-	case dns.TXTRecord:
-		return v.Content
-	default:
-		return ""
-	}
+	d, _ := json.Marshal(r.RecordResponse.Data)
+
+	return string(d)
+
+	// switch v := r.RecordResponse.Data.(type) {
+	// case dns.ARecord:
+	// 	return v.Content
+	// case dns.TXTRecord:
+	// 	return v.Content
+	// default:
+	// 	return ""
+	// }
 }
 
 func (c *Cloudflare) GetRecords(rootDomain string) ([]DNSRecord, error) {
