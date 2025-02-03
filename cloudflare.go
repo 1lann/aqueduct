@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -85,20 +84,7 @@ func (r *CloudflareRecord) Name() string {
 }
 
 func (r *CloudflareRecord) Value() string {
-	d, _ := json.Marshal(r.RecordResponse.Data)
-
-	v, _ := json.Marshal(r.RecordResponse)
-
-	return string(d) + "|" + string(v)
-
-	// switch v := r.RecordResponse.Data.(type) {
-	// case dns.ARecord:
-	// 	return v.Content
-	// case dns.TXTRecord:
-	// 	return v.Content
-	// default:
-	// 	return ""
-	// }
+	return r.RecordResponse.Content
 }
 
 func (c *Cloudflare) GetRecords(rootDomain string) ([]DNSRecord, error) {
@@ -109,35 +95,22 @@ func (c *Cloudflare) GetRecords(rootDomain string) ([]DNSRecord, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	// pages := c.client.DNS.Records.ListAutoPaging(ctx, dns.RecordListParams{
-	// 	ZoneID: cloudflare.F(zoneID),
-	// })
-
-	// var returnRecords []DNSRecord
-	// for pages.Next() {
-	// 	returnRecords = append(returnRecords, &CloudflareRecord{
-	// 		RecordResponse: pages.Current(),
-	// 		ZoneID:         zoneID,
-	// 	})
-	// }
-
-	// if err := pages.Err(); err != nil {
-	// 	return nil, errors.Wrap(err, "failed to get records")
-	// }
-
-	records, err := c.client.DNS.Records.List(ctx, dns.RecordListParams{
+	pages := c.client.DNS.Records.ListAutoPaging(ctx, dns.RecordListParams{
 		ZoneID: cloudflare.F(zoneID),
 	})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get records")
-	}
 
 	var returnRecords []DNSRecord
-	for _, record := range records.Result {
+	for pages.Next() {
+		record := pages.Current()
+
 		returnRecords = append(returnRecords, &CloudflareRecord{
 			RecordResponse: record,
 			ZoneID:         zoneID,
 		})
+	}
+
+	if err := pages.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to get records")
 	}
 
 	return returnRecords, nil
@@ -222,6 +195,7 @@ func (c *Cloudflare) ReplaceRecord(original DNSRecord, newValue string, annotati
 	switch cloudflareRecord.RecordResponse.Type {
 	case dns.RecordResponseTypeA:
 		newRecord = dns.ARecordParam{
+			Name:    cloudflare.F(original.Name()),
 			Content: cloudflare.F(newValue),
 			Proxied: cloudflare.F(useProxy),
 			TTL:     cloudflare.F(dns.TTL(60)),
@@ -229,6 +203,7 @@ func (c *Cloudflare) ReplaceRecord(original DNSRecord, newValue string, annotati
 		}
 	case dns.RecordResponseTypeTXT:
 		newRecord = dns.TXTRecordParam{
+			Name:    cloudflare.F(original.Name()),
 			Content: cloudflare.F(newValue),
 			Type:    cloudflare.F(dns.TXTRecordTypeTXT),
 		}

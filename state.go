@@ -204,8 +204,6 @@ func (a *Aqueduct) DiscoverCurrentState() error {
 
 		var aqRecords []DNSRecord
 		for _, record := range allRecords {
-			log.Printf("record data domain=% type=%s name=%s value=%s",
-				domain, record.Type(), record.Name(), record.Value())
 			if record.Type() == "TXT" && strings.HasPrefix(record.Name(), "_aq.") {
 				aqRecords = append(aqRecords, record)
 			}
