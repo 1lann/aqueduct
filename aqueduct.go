@@ -5,12 +5,14 @@ import (
 	"log"
 	"net"
 	"reflect"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	listersv1 "k8s.io/client-go/listers/core/v1"
@@ -39,18 +41,19 @@ const unknownNode = "__aqueduct_internal_unknown_node"
 type Aqueduct struct {
 	ctx context.Context
 
-	currentState         *AqueductState
-	taintEvents          chan struct{}
-	informerFactory      informers.SharedInformerFactory
-	nodesLister          listersv1.NodeLister
-	nodesInformer        cache.SharedIndexInformer
-	endpointSlicesLister discoverylistersv1.EndpointSliceLister
-	podsInformer         cache.SharedIndexInformer
-	serviceLister        listersv1.ServiceLister
-	serviceInformer      cache.SharedIndexInformer
-	clientset            *kubernetes.Clientset
-	providers            map[string]DNSProvider
-	ownerName            string
+	currentState           *AqueductState
+	taintEvents            chan struct{}
+	informerFactory        informers.SharedInformerFactory
+	nodesLister            listersv1.NodeLister
+	nodesInformer          cache.SharedIndexInformer
+	endpointSlicesLister   discoverylistersv1.EndpointSliceLister
+	endpointSlicesInformer cache.SharedIndexInformer
+	podsInformer           cache.SharedIndexInformer
+	serviceLister          listersv1.ServiceLister
+	serviceInformer        cache.SharedIndexInformer
+	clientset              *kubernetes.Clientset
+	providers              map[string]DNSProvider
+	ownerName              string
 
 	hasWarnings    bool
 	inWarningState atomic.Bool
@@ -186,11 +189,36 @@ func (a *Aqueduct) Reconciler() {
 		},
 	})
 
+	// target-pod-nodes is answered from a service's endpoint slices, and an
+	// endpoint only counts once it is serving. A pod is scheduled well before
+	// that, so the pod events above fire while the slice still has nothing to
+	// offer, and without this the record stays empty until the periodic taint.
+	a.endpointSlicesInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			if a.isManagedEndpointSlice(obj.(*discoveryv1.EndpointSlice)) {
+				taint()
+			}
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			oldSlice, newSlice := oldObj.(*discoveryv1.EndpointSlice), newObj.(*discoveryv1.EndpointSlice)
+			if !a.isManagedEndpointSlice(newSlice) {
+				return
+			}
+			if !reflect.DeepEqual(servingNodes(oldSlice), servingNodes(newSlice)) {
+				taint()
+			}
+		},
+		DeleteFunc: func(obj interface{}) {
+			taint()
+		},
+	})
+
 	go a.informerFactory.Start(a.ctx.Done())
 
 	if !cache.WaitForCacheSync(a.ctx.Done(),
 		a.nodesInformer.HasSynced,
 		a.podsInformer.HasSynced,
+		a.endpointSlicesInformer.HasSynced,
 		a.serviceInformer.HasSynced) {
 		panic("timed out waiting for caches to sync")
 	}
@@ -254,6 +282,32 @@ func (a *Aqueduct) Reconciler() {
 	}
 }
 
+// isManagedEndpointSlice reports whether the slice belongs to a service that
+// aqueduct publishes a domain for. Slices change whenever any pod in the
+// cluster changes readiness, and a reconcile lists every provider's records.
+func (a *Aqueduct) isManagedEndpointSlice(slice *discoveryv1.EndpointSlice) bool {
+	svc, err := a.serviceLister.Services(slice.Namespace).Get(slice.Labels[discoveryv1.LabelServiceName])
+	if err != nil {
+		return false
+	}
+	_, found := svc.Annotations[aqueductAnnotation+"/domain"]
+	return found
+}
+
+// servingNodes is the sorted names of the nodes holding the slice's serving
+// endpoints, which is all GetDesiredState reads from it.
+func servingNodes(slice *discoveryv1.EndpointSlice) []string {
+	var nodes []string
+	for _, endpoint := range slice.Endpoints {
+		if endpoint.Conditions.Serving == nil || !*endpoint.Conditions.Serving || endpoint.NodeName == nil {
+			continue
+		}
+		nodes = append(nodes, *endpoint.NodeName)
+	}
+	sort.Strings(nodes)
+	return nodes
+}
+
 func NewAqueduct(ctx context.Context, clientset *kubernetes.Clientset,
 	providers map[string]DNSProvider, ownerName string) *Aqueduct {
 	informerFactory := informers.NewSharedInformerFactory(clientset, 0)
@@ -261,17 +315,18 @@ func NewAqueduct(ctx context.Context, clientset *kubernetes.Clientset,
 	aq := &Aqueduct{
 		ctx: ctx,
 
-		taintEvents:          make(chan struct{}, 1),
-		informerFactory:      informerFactory,
-		nodesLister:          informerFactory.Core().V1().Nodes().Lister(),
-		nodesInformer:        informerFactory.Core().V1().Nodes().Informer(),
-		endpointSlicesLister: informerFactory.Discovery().V1().EndpointSlices().Lister(),
-		podsInformer:         informerFactory.Core().V1().Pods().Informer(),
-		serviceLister:        informerFactory.Core().V1().Services().Lister(),
-		serviceInformer:      informerFactory.Core().V1().Services().Informer(),
-		providers:            providers,
-		clientset:            clientset,
-		ownerName:            ownerName,
+		taintEvents:            make(chan struct{}, 1),
+		informerFactory:        informerFactory,
+		nodesLister:            informerFactory.Core().V1().Nodes().Lister(),
+		nodesInformer:          informerFactory.Core().V1().Nodes().Informer(),
+		endpointSlicesLister:   informerFactory.Discovery().V1().EndpointSlices().Lister(),
+		endpointSlicesInformer: informerFactory.Discovery().V1().EndpointSlices().Informer(),
+		podsInformer:           informerFactory.Core().V1().Pods().Informer(),
+		serviceLister:          informerFactory.Core().V1().Services().Lister(),
+		serviceInformer:        informerFactory.Core().V1().Services().Informer(),
+		providers:              providers,
+		clientset:              clientset,
+		ownerName:              ownerName,
 
 		ipsToNodes: make(map[string]string),
 	}
