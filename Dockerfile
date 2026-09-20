@@ -1,19 +1,27 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.23 AS builder
 
-# caching layer
-RUN echo "2025-02-03T01:33:49Z" && cd / && git clone https://github.com/1lann/aqueduct && \
-    cd aqueduct && GOPROXY=https://proxy.golang.org,direct CGO_ENABLED=0 go build .
+# The builder always runs on the machine's own architecture and cross-compiles
+# for the target, which needs no emulation because there is no cgo here.
+FROM --platform=$BUILDPLATFORM golang:1.23 AS builder
 
-WORKDIR /app
+WORKDIR /src
+
+# Dependencies change far less often than the code, so they get a layer of
+# their own that survives an ordinary commit.
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 go build -o aqueduct .
+ARG TARGETOS TARGETARCH
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w" -o /out/aqueduct .
 
 # Execution container
 FROM gcr.io/distroless/static:nonroot
 
-COPY --from=builder /app/aqueduct /aqueduct
+COPY --from=builder /out/aqueduct /aqueduct
 
 ENTRYPOINT ["/aqueduct"]
